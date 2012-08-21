@@ -1,0 +1,25 @@
+varnishtest "Test basic HTTP access vmod (valid cookie, two services)"
+
+server s1 {
+       rxreq
+       txresp
+} -start
+
+varnish v1 -vcl+backend {
+	import access from "${vmod_topbuild}/src/.libs/libvmod_access.so";
+	sub vcl_recv {
+		set req.http.Cookie = "foo1=bar1; acc=1-service1:1604691842~service2:1518291926-0-c86bf101077e76fad943efc823b97e37; foo2=bar2";
+	}
+	sub vcl_deliver {
+		set resp.http.result = access.check("service1", "acc", "salt");
+	}
+} -start
+
+client c1 {
+	txreq -url "/"
+	rxresp
+	expect resp.http.result == true
+}
+
+client c1 -run
+

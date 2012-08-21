@@ -1,0 +1,42 @@
+Notes libvmod-access
+
+= TODO =
+
+module :
+* ajouter possibilité de log debug
+* ajouter possibilité d'indiquer les séparateurs
+* libérer de la mémoire !
+* commenter
+
+tests :
+* utiliser un salt long
+
+doc :
+* README.rst : format du cookie, famille de services
+
+= Notes =
+
+fonctions utiles
+
+* WS_Reserve
+* WS_Release
+* char * VRT_GetHdr(sp, HDR_*, chaine); !!! : ne pas oublier le : après le nom de l'entête
+* void VRT_SetHdr(sp, HDR_*, "\005Date:", datetxt, vrt_magic_string_end);
+* char * VRT_WrkString(sp, chaine1, chaine2, ...)
+
+= Questions =
+
+* comment setter le nom du cookie : access.set_cookie_name('alm'); ou set req.http.alm_cookie_name = 'alm'; ?
+* comment indiquer un salt ?
+if (req.url ~ "^/journalelectronique/")
+{
+   set req.http.x-access-service = "journalelectronique_" + regsub(req.url, "/journalelectronique/([0-9]{8})/", "\1");
+   if (access.check(req.http.x-access-service, access.cookie_name, access.salt))
+   {
+       std.syslog("service " + req.http.x-access-service + " : acces OK");
+   }
+   else
+   {
+       std.syslog("service " + req.http.x-access-service + " : acces NOK");
+   }
+}

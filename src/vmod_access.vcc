@@ -1,0 +1,3 @@
+Module access
+Init init_function
+Function BOOL check(STRING, STRING, STRING)
