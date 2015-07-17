@@ -35,25 +35,27 @@ This module is EXPERIMENTAL - do not use in production! It is only for education
 
 6. have fun!
 
-## Functions
+## VCL function
 
-### access
+### access.check()
 
 Prototype
-        ::
 
-                access(STRING SERVICE, STRING COOKIE_NAME, STRING SALT)
+        access.check(STRING SERVICE, STRING COOKIE_NAME, STRING SALT)
+
 Return value
-	BOOL
+
+		BOOL
+
 Description
-	Returns true if a request with a valid, not expired service is sent,
-        false otherwise.
+
+        Returns true if a request with a valid cookie is sent, false otherwise.
+
 Example
-        ::
 
         if (req.url ~ "^/protected/")
         {
-                if (access.check("myservice", "__acc", "salt used for checksum"))
+                if (access.check("protected_content", "__access", "salt used for checksum"))
                 {       
                         // access granted
                 }
