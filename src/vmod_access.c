@@ -1,22 +1,24 @@
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
 #include <syslog.h>
 
 #include "vrt.h"
-#include "bin/varnishd/cache.h"
+#include "cache/cache.h"
 
 #include "vcc_if.h"
 
 #include <mhash.h>
 
-#define VMODACCESS_LOG(...) WSP(sp, SLT_VCL_Log, __VA_ARGS__);
+struct vsl_log *vsl;
+#define VMOD_ACCESS_LOG(...) VSLb(vsl, SLT_Debug, __VA_ARGS__);
 
-#define DEBUG
+#define DEBUG 1
 
-#ifdef DEBUG
-#define VMODACCESS_DEBUG(...) syslog(LOG_INFO, __VA_ARGS__);
+#if defined DEBUG && DEBUG == 1
+#define VMOD_ACCESS_DEBUG(...) syslog(LOG_DEBUG, __VA_ARGS__);
 #else
-#define VMODACCESS_DEBUG(...) ;
+#define VMOD_ACCESS_DEBUG(...) ;
 #endif
 
 int
@@ -25,9 +27,10 @@ init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
 	return (0);
 }
 
-unsigned
-vmod_check(struct sess *sp, const char *service, const char *cookie_name, const char *salt)
+VCL_BOOL
+vmod_check(const struct vrt_ctx *ctx, VCL_STRING service, VCL_STRING cookie_name, VCL_STRING salt)
 {
+		const struct gethdr_s cookies_header_struct = { HDR_REQ, "\07Cookie:" };
         char *cookies_header, *cookies_header_dup;
         char **cookies_ptrptr;
 
@@ -46,21 +49,21 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
 
         time_t service_date_timestamp;
 
+		VMOD_ACCESS_DEBUG("vmod_access: entering access.check()");
+
         if (!service || !cookie_name || !salt)
         {
-            VMODACCESS_LOG("invalid call to access.check()");
-            return 0;
-            // erreur 500
+            VMOD_ACCESS_LOG("vmod_access: invalid call to access.check()");
+            return false;
+            // should return a 500
         }
 
-        VMODACCESS_DEBUG("--- entering vmod_access");
-
-        cookies_header = VRT_GetHdr(sp, HDR_REQ, "\07Cookie:");
+        cookies_header = VRT_GetHdr(ctx, &cookies_header_struct);
         if (cookies_header != NULL)
         {
             // Got some covokies in request, try to find ours
             cookies_header_dup = (char *) strdup(cookies_header);
-            VMODACCESS_DEBUG("cookies header = '%s'", cookies_header);
+            VMOD_ACCESS_DEBUG("vmod_access: cookies header = '%s'", cookies_header);
 
             cookies_ptrptr = (char**) malloc(sizeof(char*));
             for (current_cookie = strtok_r(cookies_header_dup, "; ", cookies_ptrptr);
@@ -72,10 +75,10 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
             	current_cookie_name = strtok_r(current_cookie, "=", cookie_ptrptr);
             	current_cookie_value = strtok_r(NULL, "=", cookie_ptrptr);
 
-                if (strcmp(current_cookie_name, cookie_name) == 0)
+                if (strncmp(current_cookie_name, cookie_name, strlen(cookie_name)) == 0)
                 {
                     // Found our cookie, extract fields
-                	VMODACCESS_DEBUG("got cookie '%s' = '%s', matches", current_cookie_name, current_cookie_value);
+                	VMOD_ACCESS_DEBUG("vmod_access: got cookie '%s' = '%s', matches", current_cookie_name, current_cookie_value);
 
                     if (current_cookie_value != NULL)
                     {
@@ -83,33 +86,33 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
                         version	= strtok_r(current_cookie_value, "-", current_cookie_value_ptrptr);
                         if (!version)
                         {
-                            VMODACCESS_DEBUG("can't extract version in '%s'!", current_cookie_value);
+                            VMOD_ACCESS_DEBUG("vmod_access: can't extract version in '%s'!", current_cookie_value);
                             continue;
                         }
 
                         services = strtok_r(NULL, "-", current_cookie_value_ptrptr);
                         if (!services)
                         {
-                            VMODACCESS_DEBUG("can't extract services in '%s'!", current_cookie_value);
+                            VMOD_ACCESS_DEBUG("vmod_access: can't extract services in '%s'!", current_cookie_value);
                             continue;
                         }
 
                         user_id	= strtok_r(NULL, "-", current_cookie_value_ptrptr);
                         if (!user_id)
                         {
-                            VMODACCESS_DEBUG("can't extract user_id in '%s'!", current_cookie_value);
+                            VMOD_ACCESS_DEBUG("vmod_access: can't extract user_id in '%s'!", current_cookie_value);
                             continue;
                         }
 
                         checksum = strtok_r(NULL, "-", current_cookie_value_ptrptr);
                         if (!checksum)
                         {
-                            VMODACCESS_DEBUG("can't extract checksum in '%s'!", current_cookie_value);
+                            VMOD_ACCESS_DEBUG("vmod_access: can't extract checksum in '%s'!", current_cookie_value);
                             continue;
                         }
 
                         // Got all fields in cookie
-                        VMODACCESS_DEBUG("found version '%s', services '%s', user_id '%s', checksum '%s'", version, services, user_id, checksum);
+                        VMOD_ACCESS_DEBUG("vmod_access: found version '%s', services '%s', user_id '%s', checksum '%s'", version, services, user_id, checksum);
 
                         // Extract all (service, date)
                         services_ptrptr = (char**) malloc(sizeof(char*));
@@ -123,7 +126,7 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
 						    services_date = strtok_r(NULL, ":", services_name_date_ptrptr);
 
                             // Search for a matching service name
-                            VMODACCESS_DEBUG("name = '%s', date = '%s'", services_name, services_date);
+                            VMOD_ACCESS_DEBUG("vmod_access: name = '%s', date = '%s'", services_name, services_date);
                             if (!services_name || !services_date)
                             {
                                 continue;
@@ -133,12 +136,12 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
                             if (strstr(service, services_name))
                             {
                                 // Service name found, check date is still valid
-                                VMODACCESS_DEBUG("cookie service name '%s' matches '%s'!", services_name, service);
+                                VMOD_ACCESS_DEBUG("vmod_access: cookie service name '%s' matches '%s'", services_name, service);
                                 errno=0;
                                 service_date_timestamp = (time_t)strtol(services_date, NULL, 10);
                                 if (errno != 0)
                                 {
-                                    VMODACCESS_DEBUG("invalid date '%s'", services_date);
+                                    VMOD_ACCESS_DEBUG("vmod_access: invalid date '%s'", services_date);
                                     continue;
                                 }
 
@@ -147,13 +150,14 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
                                 {
                                     // Found the right service name with a valid date, compare checksum
                                     sprintf(checksum_input, "%s%s%s%s", salt, version, services, user_id);
-                                    VMODACCESS_DEBUG("valid date, compute checksum for '%s'", checksum_input);
+                                    VMOD_ACCESS_DEBUG("vmod_access: valid date, compute checksum for '%s'", checksum_input);
 
                                     mhash_struct = mhash_init(MHASH_MD5);
                                     if (mhash_struct == MHASH_FAILED)
                                     {
-                                        VMODACCESS_DEBUG("couldn't compute hash!", service);
-                                        // erreur 503
+                                        VMOD_ACCESS_DEBUG("vmod_access: couldn't compute hash");
+                                        return false;
+                                        // should return 503
                                     }
                                     mhash(mhash_struct, checksum_input, strlen(checksum_input));
                                     hash = mhash_end(mhash_struct);
@@ -162,21 +166,20 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
                                         sprintf(checksum_output + i*2, "%02x", hash[i]);
                                     }
 
-                                    // Checksum is valid, grant access!
-                                    if (strcmp(checksum_output, checksum) == 0)
+                                    // Grand access if computed checksum and checksum in cookie match
+                                    if (strncmp(checksum_output, checksum, strlen(checksum_output)) == 0)
                                     {
-                                        // log
-                                        VMODACCESS_DEBUG("computed checksum '%s' matches cookie '%s', access granted!", checksum_output, checksum);
-                                        return 1;
+                                        VMOD_ACCESS_DEBUG("vmod_access: computed checksum '%s' matches cookie '%s', access granted!", checksum_output, checksum);
+                                        return true;
                                     }
                                     else
                                     {
-                                        VMODACCESS_DEBUG("computed checksum '%s' doesn't match cookie '%s'", checksum_output, checksum);
+                                        VMOD_ACCESS_DEBUG("vmod_access: computed checksum '%s' doesn't match cookie '%s'", checksum_output, checksum);
                                     }
                                 }
                                 else
                                 {
-                                    VMODACCESS_DEBUG("date '%s' in past", services_date);
+                                    VMOD_ACCESS_DEBUG("vmod_access: date '%s' in past", services_date);
                                 }
                             }
                         }
@@ -186,17 +189,10 @@ vmod_check(struct sess *sp, const char *service, const char *cookie_name, const 
         }
         else
         {
-            VMODACCESS_DEBUG("no cookies sent with request");
+            VMOD_ACCESS_DEBUG("vmod_access: no cookies sent with request");
         }
 
-        return 0;
-}
+        VMOD_ACCESS_DEBUG("vmod_access: access denied, leaving acces.check()");
+        return false;
 
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: noet sw=4 ts=4 fdm=marker
- * vim<600: noet sw=4 ts=4
- */
+}
