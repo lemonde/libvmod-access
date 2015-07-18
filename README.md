@@ -1,5 +1,7 @@
 # libvmod-access
 
+ [![Build Status](https://travis-ci.org/lemonde/libvmod-access.svg?branch=master)](https://travis-ci.org/lemonde/libvmod-access)
+
 ## Description
 
 Varnish module implementing cookie-based access control.
