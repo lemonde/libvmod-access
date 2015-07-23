@@ -62,16 +62,17 @@ vmod_check(const struct vrt_ctx *ctx, VCL_STRING service, VCL_STRING cookie_name
         if (cookies_header != NULL)
         {
             // Got some covokies in request, try to find ours
-            cookies_header_dup = (char *) strdup(cookies_header);
+            cookies_header_dup = (char *) WS_Alloc(ctx->ws, strlen(cookies_header));
+            strncpy(cookies_header_dup, cookies_header, strlen(cookies_header));
             VMOD_ACCESS_DEBUG("vmod_access: cookies header = '%s'", cookies_header);
 
-            cookies_ptrptr = (char**) malloc(sizeof(char*));
+            cookies_ptrptr = (char**) WS_Alloc(ctx->ws, sizeof(char*));
             for (current_cookie = strtok_r(cookies_header_dup, "; ", cookies_ptrptr);
                  current_cookie != NULL;
                  current_cookie = strtok_r(NULL, "; ", cookies_ptrptr))
             {
                  // Extract cookie name and value
-            	cookie_ptrptr = (char**) malloc(sizeof(char*));
+                cookie_ptrptr = (char**) WS_Alloc(ctx->ws, sizeof(char*));
             	current_cookie_name = strtok_r(current_cookie, "=", cookie_ptrptr);
             	current_cookie_value = strtok_r(NULL, "=", cookie_ptrptr);
 
@@ -82,7 +83,7 @@ vmod_check(const struct vrt_ctx *ctx, VCL_STRING service, VCL_STRING cookie_name
 
                     if (current_cookie_value != NULL)
                     {
-                        current_cookie_value_ptrptr = (char**) malloc(sizeof(char*));
+                        current_cookie_value_ptrptr = (char**) WS_Alloc(ctx->ws, sizeof(char*));
                         version	= strtok_r(current_cookie_value, "-", current_cookie_value_ptrptr);
                         if (!version)
                         {
@@ -115,13 +116,14 @@ vmod_check(const struct vrt_ctx *ctx, VCL_STRING service, VCL_STRING cookie_name
                         VMOD_ACCESS_DEBUG("vmod_access: found version '%s', services '%s', user_id '%s', checksum '%s'", version, services, user_id, checksum);
 
                         // Extract all (service, date)
-                        services_ptrptr = (char**) malloc(sizeof(char*));
-                        services_dup = strdup(services);
+                        services_ptrptr = (char**) WS_Alloc(ctx->ws, sizeof(char*));
+                        services_dup = (char*) WS_Alloc(ctx->ws, strlen(services));
+                        strncpy(services_dup, services, strlen(services));
 					    for (services_name_date = strtok_r(services_dup, "~", services_ptrptr);
 							 services_name_date != NULL;
 							 services_name_date = strtok_r(NULL, "~", services_ptrptr))
 					    {
-						    services_name_date_ptrptr = (char**) malloc(sizeof(char*));
+						    services_name_date_ptrptr = (char**) WS_Alloc(ctx->ws, sizeof(char*));
 						    services_name = strtok_r(services_name_date, ":", services_name_date_ptrptr);
 						    services_date = strtok_r(NULL, ":", services_name_date_ptrptr);
 
@@ -131,8 +133,8 @@ vmod_check(const struct vrt_ctx *ctx, VCL_STRING service, VCL_STRING cookie_name
                             {
                                 continue;
                             }
-	
-							// Compare substrings as service "foo" in cookie must match service "foo_YYYYMMDD" in access.check() 
+
+							// Compare substrings as service "foo" in cookie must match service "foo_YYYYMMDD" in access.check()
                             if (strstr(service, services_name))
                             {
                                 // Service name found, check date is still valid
